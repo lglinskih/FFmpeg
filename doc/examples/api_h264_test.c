@@ -43,9 +43,9 @@
 
 static int video_decode_example(const char *input_filename)
 {
-    AVCodec *codec;
-    AVCodecContext *origin_ctx, *ctx= NULL;
-    FILE *f;
+    AVCodec *codec = NULL;
+    AVCodecContext *origin_ctx = NULL, *ctx= NULL;
+    FILE *f = NULL;
     AVFrame *fr = NULL;
     uint8_t *buffer = NULL, *byte_buffer = NULL;
     AVPacket pkt;
@@ -110,12 +110,11 @@ static int video_decode_example(const char *input_filename)
     //some staff with picture
     byte_buffer_size = av_image_get_buffer_size(ctx->pix_fmt, ctx->width, ctx->height, 1);
     printf("%i -- buffer size\n", byte_buffer_size);
-    byte_buffer = (uint8_t*)malloc(byte_buffer_size * sizeof(uint8_t));
+    byte_buffer = (uint8_t*)av_malloc(byte_buffer_size * sizeof(uint8_t));
 
     av_init_packet(&pkt);
     printf("starting to decode frames\n");
-    while (1) {
-        if_read_frame = av_read_frame(fmt_ctx, &pkt);
+    while (av_read_frame(fmt_ctx, &pkt) >= 0) {
         printf("read one packet\n");
         if (pkt.stream_index == video_stream) {
             printf("packet from video stream!!\n");
@@ -125,15 +124,29 @@ static int video_decode_example(const char *input_filename)
             if (get_frame) {
                 printf("we finally get frame\n");
                 number_of_written_bytes = av_image_copy_to_buffer(byte_buffer, byte_buffer_size,
-                                        (const uint8_t*)fr->data, (const int) fr->linesize,
+                                        (const uint8_t* const *)fr->data, (const int*) fr->linesize,
                                         ctx->pix_fmt, ctx->width, ctx->height, 1);
                 printf("%i -- linesize[0]", fr->linesize[0]);
                 printf("copy from frame to buffer is ok -- %i\n", number_of_written_bytes);
                 printf("%0x \n", av_adler32_update(0, (const uint8_t*)byte_buffer, number_of_written_bytes));
             }
         }
-        if (if_read_frame < 0)
-            break;
+    }
+    printf("read one packet\n");
+    if (pkt.stream_index == video_stream) {
+        printf("packet from video stream!!\n");
+        get_frame = 0;
+        avcodec_decode_video2(ctx, fr, &get_frame, &pkt);
+        printf("YEAAAH WE DECODED IT\n");
+        if (get_frame) {
+            printf("we finally get frame\n");
+            number_of_written_bytes = av_image_copy_to_buffer(byte_buffer, byte_buffer_size,
+                                    (const uint8_t* const *)fr->data, (const int*) fr->linesize,
+                                    ctx->pix_fmt, ctx->width, ctx->height, 1);
+            printf("%i -- linesize[0]", fr->linesize[0]);
+            printf("copy from frame to buffer is ok -- %i\n", number_of_written_bytes);
+            printf("%0x \n", av_adler32_update(0, (const uint8_t*)byte_buffer, number_of_written_bytes));
+        }
     }
     return 0;
 }
