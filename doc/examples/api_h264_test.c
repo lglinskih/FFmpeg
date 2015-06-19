@@ -56,6 +56,7 @@ static int video_decode_example(const char *input_filename)
     int num_bytes;
     int get_frame = 0;
     int byte_buffer_size;
+    int if_read_frame;
 
 
     if (avformat_open_input(&fmt_ctx, input_filename, NULL, NULL) < 0) {
@@ -113,7 +114,8 @@ static int video_decode_example(const char *input_filename)
 
     av_init_packet(&pkt);
     printf("starting to decode frames\n");
-    while (av_read_frame(fmt_ctx, &pkt) >= 0) {
+    while (1) {
+        if_read_frame = av_read_frame(fmt_ctx, &pkt);
         printf("read one packet\n");
         if (pkt.stream_index == video_stream) {
             printf("packet from video stream!!\n");
@@ -122,7 +124,6 @@ static int video_decode_example(const char *input_filename)
             printf("YEAAAH WE DECODED IT\n");
             if (get_frame) {
                 printf("we finally get frame\n");
-
                 number_of_written_bytes = av_image_copy_to_buffer(byte_buffer, byte_buffer_size,
                                         (const uint8_t*)fr->data, (const int) fr->linesize,
                                         ctx->pix_fmt, ctx->width, ctx->height, 1);
@@ -131,6 +132,8 @@ static int video_decode_example(const char *input_filename)
                 printf("%0x \n", av_adler32_update(0, (const uint8_t*)byte_buffer, number_of_written_bytes));
             }
         }
+        if (if_read_frame < 0)
+            break;
     }
     return 0;
 }
