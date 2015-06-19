@@ -110,41 +110,40 @@ static int video_decode_example(const char *input_filename)
     //some staff with picture
     byte_buffer_size = av_image_get_buffer_size(ctx->pix_fmt, ctx->width, ctx->height, 1);
     printf("%i -- buffer size\n", byte_buffer_size);
-    byte_buffer = (uint8_t*)av_malloc(byte_buffer_size * sizeof(uint8_t));
+    byte_buffer = (uint8_t*)av_malloc(byte_buffer_size * sizeof(uint8_t) + FF_INPUT_BUFFER_PADDING_SIZE);
 
     av_init_packet(&pkt);
     printf("starting to decode frames\n");
     while (av_read_frame(fmt_ctx, &pkt) >= 0) {
-        printf("read one packet\n");
         if (pkt.stream_index == video_stream) {
-            printf("packet from video stream!!\n");
             get_frame = 0;
             avcodec_decode_video2(ctx, fr, &get_frame, &pkt);
+            av_free_packet(&pkt);
+            av_init_packet(&pkt);
             printf("YEAAAH WE DECODED IT\n");
             if (get_frame) {
                 printf("we finally get frame\n");
                 number_of_written_bytes = av_image_copy_to_buffer(byte_buffer, byte_buffer_size,
                                         (const uint8_t* const *)fr->data, (const int*) fr->linesize,
                                         ctx->pix_fmt, ctx->width, ctx->height, 1);
-                printf("%i -- linesize[0]", fr->linesize[0]);
-                printf("copy from frame to buffer is ok -- %i\n", number_of_written_bytes);
                 printf("%0x \n", av_adler32_update(0, (const uint8_t*)byte_buffer, number_of_written_bytes));
             }
         }
     }
-    printf("read one packet\n");
-    if (pkt.stream_index == video_stream) {
-        printf("packet from video stream!!\n");
+    printf("End of file!!\n");
+    int flag = 0;
+    while (!flag) {
         get_frame = 0;
-        avcodec_decode_video2(ctx, fr, &get_frame, &pkt);
+        pkt.data = NULL;
+        pkt.size = 0;
+        if (avcodec_decode_video2(ctx, fr, &get_frame, &pkt) < 0 || get_frame == 0)
+            flag = 1;
         printf("YEAAAH WE DECODED IT\n");
         if (get_frame) {
             printf("we finally get frame\n");
             number_of_written_bytes = av_image_copy_to_buffer(byte_buffer, byte_buffer_size,
                                     (const uint8_t* const *)fr->data, (const int*) fr->linesize,
                                     ctx->pix_fmt, ctx->width, ctx->height, 1);
-            printf("%i -- linesize[0]", fr->linesize[0]);
-            printf("copy from frame to buffer is ok -- %i\n", number_of_written_bytes);
             printf("%0x \n", av_adler32_update(0, (const uint8_t*)byte_buffer, number_of_written_bytes));
         }
     }
