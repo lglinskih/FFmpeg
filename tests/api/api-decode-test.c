@@ -21,7 +21,7 @@
  */
 
 /**
- * H264 codec test.
+ * Decode test.
  */
 
 #include "libavutil/adler32.h"
@@ -29,7 +29,7 @@
 #include "libavformat/avformat.h"
 #include "libavutil/imgutils.h"
 
-static int video_decode_example(const char *input_filename)
+static int video_decode(const char *input_filename, int is_bitexact)
 {
     AVCodec *codec = NULL;
     AVCodecContext *origin_ctx = NULL, *ctx= NULL;
@@ -40,10 +40,11 @@ static int video_decode_example(const char *input_filename)
     int number_of_written_bytes;
     int video_stream;
     int got_frame = 0;
-    int byte_buffer_size;
+    int byte_buffer_size = 0;
     int i = 0;
     int result;
     int end_of_stream = 0;
+    int j = 0;
 
     result = avformat_open_input(&fmt_ctx, input_filename, NULL, NULL);
     if (result < 0) {
@@ -82,6 +83,8 @@ static int video_decode_example(const char *input_filename)
         av_log(NULL, AV_LOG_ERROR, "Can't copy decoder context\n");
         return result;
     }
+
+    ctx->flags |= AV_CODEC_FLAG_BITEXACT;
 
     result = avcodec_open2(ctx, codec, NULL);
     if (result < 0) {
@@ -130,9 +133,13 @@ static int video_decode_example(const char *input_filename)
                     av_log(NULL, AV_LOG_ERROR, "Can't copy image to buffer\n");
                     return number_of_written_bytes;
                 }
-                printf("%d, %10"PRId64", %10"PRId64", %8"PRId64", %8d, 0x%08lx\n", video_stream,
-                        fr->pkt_pts, fr->pkt_dts, av_frame_get_pkt_duration(fr),
-                        number_of_written_bytes, av_adler32_update(0, (const uint8_t*)byte_buffer, number_of_written_bytes));
+                if (is_bitexact)
+                    printf("%d, %10"PRId64", %10"PRId64", %8"PRId64", %8d, 0x%08lx\n", video_stream,
+                            fr->pkt_pts, fr->pkt_dts, av_frame_get_pkt_duration(fr),
+                            number_of_written_bytes, av_adler32_update(0, (const uint8_t*)byte_buffer, number_of_written_bytes));
+                else
+                    for (j = 0; j < number_of_written_bytes; j++)
+                        printf("%02x", byte_buffer[j]);
             }
             av_free_packet(&pkt);
             av_init_packet(&pkt);
@@ -151,6 +158,8 @@ static int video_decode_example(const char *input_filename)
 
 int main(int argc, char **argv)
 {
+    int result;
+
     if (argc < 2)
     {
         av_log(NULL, AV_LOG_ERROR, "Incorrect input\n");
@@ -159,7 +168,17 @@ int main(int argc, char **argv)
 
     av_register_all();
 
-    if (video_decode_example(argv[1]) != 0)
+    if (argc == 3) {
+        if (!strcmp(argv[2], "bitexact"))
+            result = video_decode(argv[1], 1);
+        else {
+            av_log(NULL, AV_LOG_ERROR, "Incorrect input\n");
+            return 1;
+        }
+    }
+    else
+        result = video_decode(argv[1], 0);
+    if (result)
         return 1;
 
     return 0;
