@@ -13,6 +13,11 @@ fate-api-decode-flv: $(APITESTSDIR)/api-decode-test$(EXESUF) fate-vsynth3-flv
 fate-api-decode-flv: CMD = run $(APITESTSDIR)/api-decode-test $(TARGET_PATH)/tests/data/fate/vsynth3-flv.flv
 FATE_API_SAMPLES-$(CONFIG_AVFORMAT) += $(FATE_API_SAMPLES_LIBAVFORMAT-yes)
 
+FATE_API_SAMPLES_LIBAVFORMAT-yes += fate-api-decode-aac
+fate-api-decode-aac: $(APITESTSDIR)/api-decode-test$(EXESUF)
+fate-api-decode-aac: CMD = run $(APITESTSDIR)/api-decode-test $(TARGET_SAMPLES)/aac/al_sbr_ps_06_new.mp4
+fate-api-decode-aac: REF = $(SAMPLES)/aac/al_sbr_ps_06_ur.s16
+
 ifdef SAMPLES
     FATE_API_SAMPLES += $(FATE_API_SAMPLES-yes)
 endif
