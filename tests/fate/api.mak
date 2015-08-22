@@ -15,8 +15,10 @@ FATE_API_SAMPLES-$(CONFIG_AVFORMAT) += $(FATE_API_SAMPLES_LIBAVFORMAT-yes)
 
 FATE_API_SAMPLES_LIBAVFORMAT-yes += fate-api-decode-aac
 fate-api-decode-aac: $(APITESTSDIR)/api-decode-test$(EXESUF)
-fate-api-decode-aac: CMD = run $(APITESTSDIR)/api-decode-test $(TARGET_SAMPLES)/aac/al_sbr_ps_06_new.mp4
-fate-api-decode-aac: REF = $(SAMPLES)/aac/al_sbr_ps_06_ur.s16
+fate-api-decode-aac: CMD = run $(APITESTSDIR)/api-decode-test $(TARGET_SAMPLES)/aac/al04_44.mp4
+fate-api-decode-aac: REF = $(SAMPLES)/aac/al04_44.s16
+fate-api-decode-aac: CMP  = oneoff
+fate-api-decode-aac: FUZZ = 2
 
 ifdef SAMPLES
     FATE_API_SAMPLES += $(FATE_API_SAMPLES-yes)
