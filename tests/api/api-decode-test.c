@@ -31,7 +31,7 @@
 #include "libswresample/swresample.h"
 #include "libavutil/opt.h"
 
-static int decode_video(AVPacket *pkt, AVCodecContext *ctx, int is_bitexact, int i, int *got_frame)
+static int decode_video(AVPacket *pkt, AVCodecContext *ctx, int is_bitexact, int i, int *got_frame, int stream)
 {
     AVFrame *fr = NULL;
     uint8_t *byte_buffer = NULL;
@@ -66,8 +66,8 @@ static int decode_video(AVPacket *pkt, AVCodecContext *ctx, int is_bitexact, int
             return number_of_written_bytes;
         }
         if (is_bitexact)
-            printf("%10"PRId64", %10"PRId64", %8"PRId64", %8d, 0x%08lx\n",
-                    fr->pkt_pts, fr->pkt_dts, av_frame_get_pkt_duration(fr),
+            printf("%d, %10"PRId64", %10"PRId64", %8"PRId64", %8d, 0x%08lx\n",
+                    stream, fr->pkt_pts, fr->pkt_dts, av_frame_get_pkt_duration(fr),
                     number_of_written_bytes, av_adler32_update(0, (const uint8_t*)byte_buffer, number_of_written_bytes));
         else
             fwrite(byte_buffer, 1, number_of_written_bytes, stdout);
@@ -78,7 +78,7 @@ static int decode_video(AVPacket *pkt, AVCodecContext *ctx, int is_bitexact, int
     return 0;
 }
 
-static int decode_audio(AVPacket *pkt, AVCodecContext *ctx, int is_bitexact, int i, int *got_frame, int sample_fmt)
+static int decode_audio(AVPacket *pkt, AVCodecContext *ctx, int is_bitexact, int i, int *got_frame, int sample_fmt, int stream)
 {
     AVFrame *fr = NULL;
     int number_of_written_bytes;
@@ -113,8 +113,8 @@ static int decode_audio(AVPacket *pkt, AVCodecContext *ctx, int is_bitexact, int
                 return number_of_written_bytes;
             }
             if (is_bitexact)
-                printf("%10"PRId64", %10"PRId64", %8"PRId64", %8d, 0x%08lx\n",
-                        fr->pkt_pts, fr->pkt_dts, av_frame_get_pkt_duration(fr),
+                printf("%d, %10"PRId64", %10"PRId64", %8"PRId64", %8d, 0x%08lx\n",
+                        stream, fr->pkt_pts, fr->pkt_dts, av_frame_get_pkt_duration(fr),
                         number_of_written_bytes, av_adler32_update(0, (const uint8_t*)fr->data[0], number_of_written_bytes));
             else {
                 if (ctx->channels > AV_NUM_DATA_POINTERS)
@@ -257,22 +257,19 @@ static int decode_test(const char *input_filename, int is_bitexact, int type, in
             if (pkt.pts == AV_NOPTS_VALUE)
                 pkt.pts = pkt.dts = i;
 
-            //TODO video staff
-            //call spec function to get frame!!
             if (type == AVMEDIA_TYPE_VIDEO) {
-                result = decode_video(&pkt, ctx, is_bitexact, i, &got_frame);
+                result = decode_video(&pkt, ctx, is_bitexact, i, &got_frame, stream);
                 if (result)
                     return -1;
-                    //TODO errors
             }
             else if (type == AVMEDIA_TYPE_AUDIO) {
-                result = decode_audio(&pkt, ctx, is_bitexact, i, &got_frame, sample_fmt);
+                result = decode_audio(&pkt, ctx, is_bitexact, i, &got_frame, sample_fmt, stream);
                 if (result)
                     return -1;
-                //TODO errors
             }
             else {
-                //TODO error!!!!
+                av_log(NULL, AV_LOG_ERROR, "OOOPS, something went wrong in developer's logic");
+                return -1;
             }
             av_free_packet(&pkt);
             av_init_packet(&pkt);
