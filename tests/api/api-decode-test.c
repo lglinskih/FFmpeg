@@ -78,7 +78,7 @@ static int decode_video(AVPacket *pkt, AVCodecContext *ctx, int is_bitexact, int
     return 0;
 }
 
-static int decode_audio(AVPacket *pkt, AVCodecContext *ctx, int is_bitexact, int i, int *got_frame)
+static int decode_audio(AVPacket *pkt, AVCodecContext *ctx, int is_bitexact, int i, int *got_frame, int sample_fmt)
 {
     AVFrame *fr = NULL;
     int number_of_written_bytes;
@@ -87,7 +87,7 @@ static int decode_audio(AVPacket *pkt, AVCodecContext *ctx, int is_bitexact, int
     int k = 0;
     int length_read;
     struct SwrContext *swr_ctx;
-    int dst_nb_samples, max_dst_nb_samples;
+    int dst_nb_samples;
     int dst_bufsize;
     int dst_linesize = 0;
     uint8_t **dst_data = NULL;
@@ -98,6 +98,7 @@ static int decode_audio(AVPacket *pkt, AVCodecContext *ctx, int is_bitexact, int
         return AVERROR(ENOMEM);
     }
 
+    length_read = 0;
     do {
         result = avcodec_decode_audio4(ctx, fr, got_frame, pkt);
         if (result < 0) {
@@ -118,13 +119,13 @@ static int decode_audio(AVPacket *pkt, AVCodecContext *ctx, int is_bitexact, int
             else {
                 if (ctx->channels > AV_NUM_DATA_POINTERS)
                 {
-    //                    printf("AAAAAA!\n");
-                        return -1;
+                    //TODO what should we do??
+                    return -1;
                 }
                 if (ctx->sample_fmt != AV_SAMPLE_FMT_S16) {
                     swr_ctx = swr_alloc_set_opts(NULL,
                                     fr->channel_layout,
-                                    AV_SAMPLE_FMT_S16,
+                                    sample_fmt,
                                     fr->sample_rate,
                                     fr->channel_layout,
                                     ctx->sample_fmt,
@@ -139,23 +140,12 @@ static int decode_audio(AVPacket *pkt, AVCodecContext *ctx, int is_bitexact, int
                         av_log(NULL, AV_LOG_ERROR, "Can't initialize the resampling context\n");
                         return result;
                     }
-                    max_dst_nb_samples = dst_nb_samples = fr->nb_samples;
-//                              av_rescale_rnd(fr->nb_samples, fr->sample_rate, fr->sample_rate, AV_ROUND_UP);
+                    dst_nb_samples = fr->nb_samples;
                     result = av_samples_alloc_array_and_samples(&dst_data, &dst_linesize, fr->channels,
-                                                             dst_nb_samples, AV_SAMPLE_FMT_S16, 0);
+                                                             dst_nb_samples, sample_fmt, 0);
                     if (result < 0) {
                         av_log(NULL, AV_LOG_ERROR, "Can't allocate buffer for samples after resampling\n");
                         return result;
-                    }
-//                    dst_nb_samples = av_rescale_rnd(swr_get_delay(swr_ctx, fr->sample_rate) +
-//                                                fr->nb_samples, fr->sample_rate, fr->sample_rate, AV_ROUND_UP);
-                    if (dst_nb_samples > max_dst_nb_samples) {
-                        av_freep(&dst_data[0]);
-                        result = av_samples_alloc(dst_data, &dst_linesize, fr->channels,
-                                               dst_nb_samples, AV_SAMPLE_FMT_S16, 1);
-                        if (result < 0)
-                            break;
-                        max_dst_nb_samples = dst_nb_samples;
                     }
 
                     result = swr_convert(swr_ctx, dst_data, dst_nb_samples, (const uint8_t **)fr->data, fr->nb_samples);
@@ -163,21 +153,14 @@ static int decode_audio(AVPacket *pkt, AVCodecContext *ctx, int is_bitexact, int
                         av_log(NULL, AV_LOG_ERROR, "Error while resampling\n");
                         return result;
                     }
-                    dst_bufsize = av_samples_get_buffer_size(&dst_linesize, fr->channels,
-                                                             result, AV_SAMPLE_FMT_S16, 1);
+
+                    dst_bufsize = av_samples_get_buffer_size(&dst_linesize, fr->channels, result, sample_fmt, 1);
                     if (dst_bufsize < 0) {
                         av_log(NULL, AV_LOG_ERROR, "Can'get buffer size after resampling\n");
                         return dst_bufsize;
                     }
 
-/*                    if (av_sample_fmt_is_planar(ctx->sample_fmt)) {
-                        for (j = 0; j < fr->nb_samples / fr->channels; j++)
-                            for (k = 0; k < fr->channels; k++)
-                                fwrite(fr->data + av_get_bytes_per_sample(ctx->sample_fmt) * (j + fr->nb_samples / fr->channels * k), 1, av_get_bytes_per_sample(ctx->sample_fmt), stdout);
-                    }
-
-                    else */
-                        fwrite(dst_data[0], 1, dst_bufsize, stdout);
+                    fwrite(dst_data[0], 1, dst_bufsize, stdout);
                 }
                 else
                     for (j = 0; j < fr->nb_samples; j++)
@@ -192,7 +175,8 @@ static int decode_audio(AVPacket *pkt, AVCodecContext *ctx, int is_bitexact, int
     return 0;
 }
 
-static int decode_test(const char *input_filename, int is_bitexact, int type)
+
+static int decode_test(const char *input_filename, int is_bitexact, int type, int sample_fmt, char *codec_name)
 {
     AVCodec *codec = NULL;
     AVCodecContext *origin_ctx = NULL, *ctx= NULL;
@@ -224,8 +208,11 @@ static int decode_test(const char *input_filename, int is_bitexact, int type)
 
     origin_ctx = fmt_ctx->streams[stream]->codec;
 
-//    codec = avcodec_find_decoder_by_name("aac_fixed");
-    codec = avcodec_find_decoder(origin_ctx->codec_id);
+
+    if (!strcmp(codec_name, ""))
+        codec = avcodec_find_decoder(origin_ctx->codec_id);
+    else
+        codec = avcodec_find_decoder_by_name(codec_name);
     if (!codec) {
         av_log(NULL, AV_LOG_ERROR, "Can't find decoder\n");
         return -1;
@@ -243,7 +230,8 @@ static int decode_test(const char *input_filename, int is_bitexact, int type)
         return result;
     }
 
-    ctx->flags |= AV_CODEC_FLAG_BITEXACT;
+    if (is_bitexact)
+        ctx->flags |= AV_CODEC_FLAG_BITEXACT;
 
     result = avcodec_open2(ctx, codec, NULL);
     if (result < 0) {
@@ -251,7 +239,6 @@ static int decode_test(const char *input_filename, int is_bitexact, int type)
         return result;
     }
 
-    //TODO bitexact staff
     if (is_bitexact)
         printf("#tb %d: %d/%d\n", stream, fmt_ctx->streams[stream]->time_base.num, fmt_ctx->streams[stream]->time_base.den);
 
@@ -279,7 +266,7 @@ static int decode_test(const char *input_filename, int is_bitexact, int type)
                     //TODO errors
             }
             else if (type == AVMEDIA_TYPE_AUDIO) {
-                result = decode_audio(&pkt, ctx, is_bitexact, i, &got_frame);
+                result = decode_audio(&pkt, ctx, is_bitexact, i, &got_frame, sample_fmt);
                 if (result)
                     return -1;
                 //TODO errors
@@ -305,26 +292,58 @@ static int decode_test(const char *input_filename, int is_bitexact, int type)
 int main(int argc, char **argv)
 {
     int result;
+    int sample_fmt = -1;
+    int media_type = -1;
+    int is_bitexact = 0;
+    char codec_name[30];
+    int i;
 
-    if (argc < 2)
-    {
-        av_log(NULL, AV_LOG_ERROR, "Incorrect input\n");
+    strcpy(codec_name, "");
+
+    if (argc < 4 || argc > 6) {
+        av_log(NULL, AV_LOG_ERROR, "Incorrect input\nFormat: %s <input filename> <type>(audio/video) <sample_fmt>(s16/f32) [is_bitexact] [special codec name]", argv[0]);
         return 1;
     }
 
-    av_register_all();
-
-//TODO add parameter fo type of the media
-    if (argc == 3) {
-        if (!strcmp(argv[2], "bitexact"))
-            result = decode_test(argv[1], 1, AVMEDIA_TYPE_AUDIO);
-        else {
-            av_log(NULL, AV_LOG_ERROR, "Incorrect input\n");
+    if (!strcmp(argv[2], "video"))
+        media_type = AVMEDIA_TYPE_VIDEO;
+    else if (!strcmp(argv[2], "audio")) {
+        media_type = AVMEDIA_TYPE_AUDIO;
+        for (i = 3; i < argc; i++) {
+            if (!strcmp(argv[3], "s16")) {
+                sample_fmt = AV_SAMPLE_FMT_S16;
+                break;
+            }
+            else if (!strcmp(argv[3], "f32")) {
+                sample_fmt = AV_SAMPLE_FMT_FLT;
+                break;
+            }
+        }
+        if (sample_fmt == -1) {
+            av_log(NULL, AV_LOG_ERROR, "Incorrect input\nFormat: %s <input filename> <type>(audio/video) <sample_fmt>(s16/f32) [is_bitexact] [special codec name]", argv[0]);
             return 1;
         }
     }
-    else
-        result = decode_test(argv[1], 0, AVMEDIA_TYPE_AUDIO);
+    else {
+        av_log(NULL, AV_LOG_ERROR, "Incorrect input\nFormat: %s <input filename> <type>(audio/video) <sample_fmt>(s16/f32) [is_bitexact] [special codec name]", argv[0]);
+        return 1;
+    }
+
+    for (i = 3; i < argc; i++)
+        if (!strcmp(argv[i],  "bitexact")) {
+            is_bitexact = 1;
+            break;
+        }
+
+    for (i = 3; i < argc; i++)
+        if (strcmp(argv[i],  "bitexact") && strcmp(argv[i],  "f32") && strcmp(argv[i],  "s16")) {
+            strcpy(codec_name, argv[i]);
+            break;
+        }
+
+    av_register_all();
+
+    result = decode_test(argv[1], is_bitexact, media_type, sample_fmt, codec_name);
     if (result)
         return 1;
 
